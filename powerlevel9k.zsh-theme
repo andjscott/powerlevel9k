@@ -973,18 +973,26 @@ build_right_prompt() {
     # Check if it is a custom command, otherwise interpet it as
     # a prompt.
     if [[ $element[0,7] =~ "custom_" ]]; then
-      "prompt_custom" "right" "$index" $element[8,-1]
+      "prompt_custom" "right" "$index" $element[8,-1] >> $POWERLEVEL9K_SOCKET
     else
-      "prompt_$element" "right" "$index"
+      "prompt_$element" "right" "$index" >> $POWERLEVEL9K_SOCKET
     fi
 
     index=$((index + 1))
+    kill -s USR1 $$
   done
 }
 
+if [[ "$POWERLEVEL9K_DISABLE_RPROMPT" != true ]]; then
+  POWERLEVEL9K_SOCKET=$(mktemp)
+  powerlevel9k_async() {
+    : > $POWERLEVEL9K_SOCKET #reset file
+    build_right_prompt
+  }
+fi
 powerlevel9k_prepare_prompts() {
   RETVAL=$?
-
+  RPROMPT=""
   if [[ "$POWERLEVEL9K_PROMPT_ON_NEWLINE" == true ]]; then
     PROMPT="$(print_icon 'MULTILINE_FIRST_PROMPT_PREFIX')%f%b%k$(build_left_prompt)
 $(print_icon 'MULTILINE_SECOND_PROMPT_PREFIX')"
@@ -1006,10 +1014,30 @@ $(print_icon 'MULTILINE_SECOND_PROMPT_PREFIX')"
     RPROMPT_PREFIX=''
     RPROMPT_SUFFIX=''
   fi
-
   if [[ "$POWERLEVEL9K_DISABLE_RPROMPT" != true ]]; then
-    RPROMPT="$RPROMPT_PREFIX%f%b%k$(build_right_prompt)%{$reset_color%}$RPROMPT_SUFFIX"
+    # kill previous async
+    if [ -n "$POWERLEVEL9K_ASYNC_PROC_PID" ]; then
+      kill -TERM $POWERLEVEL9K_ASYNC_PROC_PID >/dev/null 2>&1
+    fi
+    powerlevel9k_async &!
+    POWERLEVEL9K_ASYNC_PROC_PID=$!
   fi
+}
+
+powerlevel9k_tidy() {
+  rm $POWERLEVEL9K_SOCKET
+  POWERLEVEL9K_SOCKET=""
+  if [ -n "$POWERLEVEL9K_ASYNC_PROC_PID" ]; then
+    kill -TERM $POWERLEVEL9K_ASYNC_PROC_PID >/dev/null 2>&1
+  fi
+  unset POWERLEVEL9K_SYNC_PROC_PID
+}
+trap powerlevel9k_tidy EXIT
+
+TRAPUSR1() {
+  RPROMPT="$(cat $POWERLEVEL9K_SOCKET)"
+  RPROMPT="$RPROMPT_PREFIX%f%b%k$RPROMPT%{$reset_color%}$RPROMPT_SUFFIX"
+  zle && zle reset-prompt
 }
 
 function zle-line-init {
@@ -1017,7 +1045,6 @@ function zle-line-init {
   if (( ${+terminfo[smkx]} )); then
     printf '%s' ${terminfo[smkx]}
   fi
-  zle reset-prompt
   zle -R
 }
 
@@ -1026,13 +1053,11 @@ function zle-line-finish {
   if (( ${+terminfo[rmkx]} )); then
     printf '%s' ${terminfo[rmkx]}
   fi
-  zle reset-prompt
   zle -R
 }
 
 function zle-keymap-select {
   powerlevel9k_prepare_prompts
-  zle reset-prompt
   zle -R
 }
 
