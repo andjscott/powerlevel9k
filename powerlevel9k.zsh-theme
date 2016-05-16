@@ -979,15 +979,20 @@ build_right_prompt() {
     fi
 
     index=$((index + 1))
-    kill -s USR1 $$
+    if [[ "$POWERLEVEL9K_RPROMPT_RENDER_ASAP" == true ]]; then
+      kill -s USR1 $$
+    fi
   done
+  if [[ "$POWERLEVEL9K_RPROMPT_RENDER_ASAP" != true ]]; then
+    kill -s USR1 $$
+  fi
 }
 
 if [[ "$POWERLEVEL9K_DISABLE_RPROMPT" != true ]]; then
   ASYNC_PROC=0
   socket=$(mktemp)
   async() {
-    : > $socket #reset file
+    : >! $socket #reset file
     build_right_prompt
   }
 fi
@@ -1026,8 +1031,8 @@ $(print_icon 'MULTILINE_SECOND_PROMPT_PREFIX')"
 }
 
 tidy() {
-  rm $socket
-  socket=""
+  rm -f $socket
+  unset $socket
 }
 trap tidy EXIT
 
