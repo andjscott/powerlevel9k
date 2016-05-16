@@ -979,14 +979,19 @@ build_right_prompt() {
     fi
 
     index=$((index + 1))
-    kill -s USR1 $$
+    if [[ "$POWERLEVEL9K_RPROMPT_RENDER_ASAP" == true ]]; then
+      kill -s USR1 $$
+    fi
   done
+  if [[ "$POWERLEVEL9K_RPROMPT_RENDER_ASAP" != true ]]; then
+    kill -s USR1 $$
+  fi
 }
 
 if [[ "$POWERLEVEL9K_DISABLE_RPROMPT" != true ]]; then
   POWERLEVEL9K_SOCKET=$(mktemp)
   powerlevel9k_async() {
-    : > $POWERLEVEL9K_SOCKET #reset file
+    : >! $POWERLEVEL9K_SOCKET #reset file
     build_right_prompt
   }
 fi
@@ -1025,14 +1030,13 @@ $(print_icon 'MULTILINE_SECOND_PROMPT_PREFIX')"
 }
 
 powerlevel9k_tidy() {
-  rm $POWERLEVEL9K_SOCKET
-  POWERLEVEL9K_SOCKET=""
+  rm -f $POWERLEVEL9K_SOCKET
+  unset POWERLEVEL9K_SOCKET
   if [ -n "$POWERLEVEL9K_ASYNC_PROC_PID" ]; then
     kill -TERM $POWERLEVEL9K_ASYNC_PROC_PID >/dev/null 2>&1
   fi
-  unset POWERLEVEL9K_SYNC_PROC_PID
+  unset POWERLEVEL9K_ASYNC_PROC_PID
 }
-trap powerlevel9k_tidy EXIT
 
 TRAPUSR1() {
   RPROMPT="$(cat $POWERLEVEL9K_SOCKET)"
@@ -1094,6 +1098,7 @@ powerlevel9k_init() {
 
   # prepare prompts
   add-zsh-hook precmd powerlevel9k_prepare_prompts
+  add-zsh-hook zshexit powerlevel9k_tidy
 
   zle -N zle-line-init
   zle -N zle-line-finish
